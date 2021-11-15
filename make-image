@@ -2,6 +2,9 @@
 
 set -xe
 
+ALPINE_BRANCH=latest-stable
+ARCH=aarch64
+
 mkdir -p dist /dist
 
 OUTPUT_IMG="/dist/target.img"
@@ -15,7 +18,7 @@ n
 p
 1
 
-+128MB
++256MB
 t
 c
 n
@@ -43,7 +46,7 @@ IMGID="$(dd if="${OUTPUT_IMG}" skip=440 bs=1 count=4 2>/dev/null | xxd -e | cut 
 BOOT_PARTUUID="${IMGID}-01"
 ROOT_PARTUUID="${IMGID}-02"
 
-apt-get update
+#apt-get update
 curl https://raw.githubusercontent.com/alpinelinux/alpine-chroot-install/master/alpine-chroot-install | sh
 
 cp -R bootstrap/ /alpine/
