@@ -5,9 +5,10 @@ set -xe
 ALPINE_BRANCH=latest-stable
 ARCH=aarch64
 
+CMDPWD="$PWD"
 OUTPUT_DIR="/var/tmp/dist"
 OUTPUT_IMG="$OUTPUT_DIR"/target.img
-BUILD_ROOT="/var/tmp/alpine"
+CHROOT_DIR="/var/tmp/alpine"
 
 mkdir -p dist /var/tmp/dist
 
@@ -38,31 +39,33 @@ ROOT_DEV="$LOOP_DEV"p2
 # format partitions
 mkfs.fat -F32 -n ALPINE "$BOOT_DEV"
 mkfs.ext4 "$ROOT_DEV"
-mkdir -p "$BUILD_ROOT"
-mount --make-private "$ROOT_DEV" "$BUILD_ROOT"
-mkdir -p "$BUILD_ROOT"/boot
-mount --make-private "$BOOT_DEV" "$BUILD_ROOT"/boot
+mkdir -p "$CHROOT_DIR"
+mount --make-private "$ROOT_DEV" "$CHROOT_DIR"
+mkdir -p "$CHROOT_DIR"/boot
+mount --make-private "$BOOT_DEV" "$CHROOT_DIR"/boot
 
 dd if="${OUTPUT_IMG}" skip=440 bs=1 count=4 2>/dev/null | xxd -e | cut -f 2 -d' '
 
-curl https://raw.githubusercontent.com/alpinelinux/alpine-chroot-install/master/alpine-chroot-install | sh
+curl -LO https://raw.githubusercontent.com/alpinelinux/alpine-chroot-install/master/alpine-chroot-install
+source alpine-chroot-install -d "$CHROOT_DIR"
 
-cp -R bootstrap/ "$BUILD_ROOT"/
-"$BUILD_ROOT"/enter-chroot run-parts /bootstrap/
+cp -R "$CMDPWD"/bootstrap/ "$CHROOT_DIR"/
+"$CHROOT_DIR"/enter-chroot run-parts /bootstrap/
 
-rm -rf "$BUILD_ROOT"/var/lib/apt/lists/*
-rm -rf "$BUILD_ROOT"/cache/apk/*
-rm -rf "$BUILD_ROOT"/root/*
-rm -rf "$BUILD_ROOT"/bootstrap/
-rm  "$BUILD_ROOT"/env.sh "$BUILD_ROOT"/etc/resolv.conf "$BUILD_ROOT"/enter-chroot "$BUILD_ROOT"/destroy
-find "$BUILD_ROOT" -iname "*-" -delete
-find "$BUILD_ROOT" -iname "*~" -delete
+rm -rf "$CHROOT_DIR"/var/lib/apt/lists/*
+rm -rf "$CHROOT_DIR"/cache/apk/*
+rm -rf "$CHROOT_DIR"/root/*
+rm -rf "$CHROOT_DIR"/bootstrap/
+rm  "$CHROOT_DIR"/env.sh "$CHROOT_DIR"/etc/resolv.conf "$CHROOT_DIR"/enter-chroot "$CHROOT_DIR"/destroy
+find "$CHROOT_DIR" -iname "*-" -delete
+find "$CHROOT_DIR" -iname "*~" -delete
 
-umount -lf "$BUILD_ROOT"
+umount -lf "$CHROOT_DIR"
 
 # shrink image
 ROOT_PART_START=$(parted -ms "$OUTPUT_IMG" unit B print | tail -n 1 | cut -d ':' -f 2 | tr -d 'B')
 ROOT_BLOCK_SIZE=$(tune2fs -l "$ROOT_DEV" | grep '^Block size:' | tr -d ' ' | cut -d ':' -f 2)
+partprobe -s "$OUTPUT_IMG"
 ROOT_MIN_SIZE=$(resize2fs -P "$ROOT_DEV" | cut -d ':' -f 2 | tr -d ' ')
 
 # shrink fs
