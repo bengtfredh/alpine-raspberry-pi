@@ -5,9 +5,14 @@ set -xe
 ALPINE_BRANCH=latest-stable
 ARCH=aarch64
 
-mkdir -p dist /dist
+OUTPUT_DIR="/var/tmp/dist"
+OUTPUT_IMG="$OUTPUT_DIR"/target.img
+LOOP_DEV=$(losetup --partscan --show --find "${OUTPUT_IMG}")
+BOOT_DEV="$LOOP_DEV"p1
+ROOT_DEV="$LOOP_DEV"p2
+BUILD_ROOT="/var/tmp/alpine"
 
-OUTPUT_IMG="/dist/target.img"
+mkdir -p dist /var/tmp/dist
 
 rm -Rf "$OUTPUT_IMG"
 truncate -s 2G "$OUTPUT_IMG"
@@ -29,38 +34,30 @@ p
 w
 EOF
 
-LOOP_DEV=$(losetup --partscan --show --find "${OUTPUT_IMG}")
-BOOT_DEV="$LOOP_DEV"p1
-ROOT_DEV="$LOOP_DEV"p2
-
 # format partitions
 mkfs.fat -F32 -n ALPINE "$BOOT_DEV"
 mkfs.ext4 "$ROOT_DEV"
-mkdir -p /alpine
-mount --make-private "$ROOT_DEV" /alpine
-mkdir -p /alpine/boot
-mount --make-private "$BOOT_DEV" /alpine/boot
+mkdir -p "$BUILD_ROOT"
+mount --make-private "$ROOT_DEV" "$BUILD_ROOT"
+mkdir -p "$BUILD_ROOT"/boot
+mount --make-private "$BOOT_DEV" "$BUILD_ROOT"/boot
 
-IMGID="$(dd if="${OUTPUT_IMG}" skip=440 bs=1 count=4 2>/dev/null | xxd -e | cut -f 2 -d' ')"
+dd if="${OUTPUT_IMG}" skip=440 bs=1 count=4 2>/dev/null | xxd -e | cut -f 2 -d' '
 
-BOOT_PARTUUID="${IMGID}-01"
-ROOT_PARTUUID="${IMGID}-02"
-
-#apt-get update
 curl https://raw.githubusercontent.com/alpinelinux/alpine-chroot-install/master/alpine-chroot-install | sh
 
-cp -R bootstrap/ /alpine/
-/alpine/enter-chroot run-parts /bootstrap/
+cp -R bootstrap/ "$BUILD_ROOT"/
+"$BUILD_ROOT"/enter-chroot run-parts /bootstrap/
 
-rm -rf /alpine/var/lib/apt/lists/*
-rm -rf /alpine/var/cache/apk/*
-rm -rf /alpine/root/*
-rm -rf /alpine/bootstrap/
-rm  /alpine/env.sh /alpine/etc/resolv.conf /alpine/enter-chroot /alpine/destroy
-find /alpine -iname "*-" -delete
-find /alpine -iname "*~" -delete
+rm -rf "$BUILD_ROOT"/var/lib/apt/lists/*
+rm -rf "$BUILD_ROOT"/cache/apk/*
+rm -rf "$BUILD_ROOT"/root/*
+rm -rf "$BUILD_ROOT"/bootstrap/
+rm  "$BUILD_ROOT"/env.sh "$BUILD_ROOT"/etc/resolv.conf "$BUILD_ROOT"/enter-chroot "$BUILD_ROOT"/destroy
+find "$BUILD_ROOT" -iname "*-" -delete
+find "$BUILD_ROOT" -iname "*~" -delete
 
-umount -lf /alpine
+umount -lf "$BUILD_ROOT"
 
 # shrink image
 ROOT_PART_START=$(parted -ms "$OUTPUT_IMG" unit B print | tail -n 1 | cut -d ':' -f 2 | tr -d 'B')
@@ -69,13 +66,13 @@ ROOT_MIN_SIZE=$(resize2fs -P "$ROOT_DEV" | cut -d ':' -f 2 | tr -d ' ')
 
 # shrink fs
 e2fsck -f -p "$ROOT_DEV"
-resize2fs -p "$ROOT_DEV" $ROOT_MIN_SIZE
+resize2fs -p "$ROOT_DEV" "$ROOT_MIN_SIZE"
 
 # shrink partition
-PART_END=$(($ROOT_PART_START + ($ROOT_MIN_SIZE * $ROOT_BLOCK_SIZE)))
+PART_END=$(("$ROOT_PART_START" + ("$ROOT_MIN_SIZE" * "$ROOT_BLOCK_SIZE")))
 parted ---pretend-input-tty "$OUTPUT_IMG" <<EOF
 unit B
-resizepart 2 $PART_END
+resizepart 2 "$PART_END"
 yes
 quit
 EOF
@@ -84,8 +81,9 @@ losetup -d "$LOOP_DEV"
 
 # truncate free space
 FREE_START=$(parted -ms "$OUTPUT_IMG" unit B print free | tail -1 | cut -d ':' -f 2 | tr -d 'B')
-truncate -s $FREE_START "$OUTPUT_IMG"
+truncate -s "$FREE_START" "$OUTPUT_IMG"
 
-gzip -c "$OUTPUT_IMG" > "dist/alpine-rpi-$ALPINE_BRANCH-$ARCH.img.gz"
+gzip -c "$OUTPUT_IMG" > "$OUTPUT_DIR"/alpine-rpi-"$ALPINE_BRANCH"-"$ARCH".img.gz
 
-echo "DONE."
+echo "DONE"
+echo "You find your image at "$OUTPUT_DIR"/alpine-rpi-"$ALPINE_BRANCH"-"$ARCH".img.gz"
