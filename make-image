@@ -7,9 +7,6 @@ ARCH=aarch64
 
 OUTPUT_DIR="/var/tmp/dist"
 OUTPUT_IMG="$OUTPUT_DIR"/target.img
-LOOP_DEV=$(losetup --partscan --show --find "${OUTPUT_IMG}")
-BOOT_DEV="$LOOP_DEV"p1
-ROOT_DEV="$LOOP_DEV"p2
 BUILD_ROOT="/var/tmp/alpine"
 
 mkdir -p dist /var/tmp/dist
@@ -33,6 +30,10 @@ p
 
 w
 EOF
+
+LOOP_DEV=$(losetup --partscan --show --find "${OUTPUT_IMG}")
+BOOT_DEV="$LOOP_DEV"p1
+ROOT_DEV="$LOOP_DEV"p2
 
 # format partitions
 mkfs.fat -F32 -n ALPINE "$BOOT_DEV"
